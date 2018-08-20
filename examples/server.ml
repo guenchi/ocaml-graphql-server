@@ -1,7 +1,16 @@
 open Lwt
-module C = Cohttp_lwt_unix
-
 open Graphql_lwt
+
+module HttpBody = struct
+  include Cohttp_lwt.Body
+
+  type +'a io = 'a Lwt.t
+  type 'a stream = 'a Lwt_stream.t * (unit -> unit)
+
+  let of_stream (stream, _) = Cohttp_lwt.Body.of_stream stream
+end
+
+module Graphql_cohttp_lwt = Graphql_cohttp.Make (Graphql_lwt.Schema) (HttpBody)
 
 type role = User | Admin
 
@@ -109,5 +118,8 @@ let schema = Schema.(schema [
 )
 
 let () =
-  Server.start ~ctx:(fun _req -> ()) schema
+  let callback = Graphql_cohttp_lwt.make_callback (fun _req -> ()) schema in
+  let server = Cohttp_lwt_unix.Server.make ~callback () in
+  let mode = `TCP (`Port 8080) in
+  Cohttp_lwt_unix.Server.create ~mode server
   |> Lwt_main.run
